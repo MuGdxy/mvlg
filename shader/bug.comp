@@ -1,0 +1,11 @@
+#version 450
+
+layout (local_size_x = 256) in;
+layout (push_constant) uniform PushConstantType
+{
+    int a;
+} pushConstantName;
+
+void main()
+{
+}
