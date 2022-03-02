@@ -2,7 +2,7 @@
 #include <iostream>
 #include <sstream>
 #define MU_CHECK(x, info) if((x)!=0) throw std::runtime_error((info));
-namespace vplg
+namespace mvlg
 {
 	using namespace vk;
 	struct PushConstantRangeCounter
@@ -215,7 +215,7 @@ namespace vplg
 		return res;
 	}
 
-	vk::BufferUsageFlags vplg::SemanticDescriptors::BaseEntry::BufferUsage()
+	vk::BufferUsageFlags mvlg::SemanticDescriptors::BaseEntry::BufferUsage()
 	{
 		switch (descriptorInfo.descriptorType)
 		{
@@ -382,6 +382,8 @@ namespace vplg
 										auto bindingArr = binding->type_description->traits.array;
 										this->descriptorArraySize = bindingArr.dims_count == 0 ? 1 : bindingArr.dims[0];
 										this->set = s->set;
+										this->isArray = bindingArr.dims_count > 0;
+										this->descriptorType = (vk::DescriptorType)binding->descriptor_type;
 									}
 								}
 							}
@@ -408,8 +410,6 @@ namespace vplg
 								}
 								variantArrayStride = stride;
 							}
-							this->descriptorType = (vk::DescriptorType)binding->descriptor_type;
-							this->isArray = true;
 						}
 						else
 						{
@@ -432,8 +432,8 @@ namespace vplg
 							}
 							offset = current->absolute_offset;
 							size = current->size;
+							isArray = false;
 						}
-
 					}
 					break;
 					default:

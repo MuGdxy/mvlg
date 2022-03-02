@@ -224,34 +224,6 @@ namespace vk
     //  vk::SurfaceKHR surface;
     //};
 
-    struct SwapChainData
-    {
-      SwapChainData( vk::PhysicalDevice const & physicalDevice,
-                     vk::Device const &         device,
-                     vk::SurfaceKHR const &     surface,
-                     vk::Extent2D const &       extent,
-                     vk::ImageUsageFlags        usage,
-                     vk::SwapchainKHR const &   oldSwapChain,
-                     uint32_t                   graphicsFamilyIndex,
-                     uint32_t                   presentFamilyIndex );
-
-      void clear( vk::Device const & device )
-      {
-        for ( auto & imageView : imageViews )
-        {
-          device.destroyImageView( imageView );
-        }
-        imageViews.clear();
-        images.clear();
-        device.destroySwapchainKHR( swapChain );
-      }
-
-      vk::Format                 colorFormat;
-      vk::SwapchainKHR           swapChain;
-      std::vector<vk::Image>     images;
-      std::vector<vk::ImageView> imageViews;
-    };
-
     class CheckerboardImageGenerator
     {
     public:
@@ -481,6 +453,41 @@ namespace vk
       std::vector<vk::su::TextureData> const &                                                        textureData,
       uint32_t bindingOffset = 0 );
 
+
+    /*
+    *   This part writen by: MuGdxy
+    *   email: lxy819469559@gmail.com
+    */
+
+    inline bool checkValidationLayerSupport(const std::vector<const char*>& validationLayers)
+    {
+        std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
+
+        for (const char* layerName : validationLayers)
+        {
+            bool layerFound = false;
+            std::cout << "find validation layer:" << std::endl;
+            for (const auto& layerProperty : availableLayers)
+            {
+                if (strcmp(layerName, layerProperty.layerName) == 0)
+                {
+                    layerFound = true;
+                    std::cout << "\t" << layerName << std::endl;
+                    break;
+                }
+            }
+            if (!layerFound)
+            {
+                std::cout << "Can't find validation layer[" << layerName << "]" << std::endl;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /*
+     * End
+     */
   }  // namespace su
 }  // namespace vk
 

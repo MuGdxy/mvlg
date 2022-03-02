@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.1.0)
 
+option(MVLG_INCLUDE_VULKAN_HPP ON "include vulkanhpp")
 option(MVLG_EXAMPLES ON "build Examples")
 
 
@@ -32,9 +33,18 @@ include_directories("${MVLG_EXTERN}/SPIRV-Reflect")
 add_subdirectory("${MVLG_EXTERN}/SPIRV-Reflect")
 
 #vulkan hpp
-include_directories("${MVLG_EXTERN}/Vulkan-Hpp")
-include_directories("${MVLG_EXTERN}/Vulkan-Hpp/Vulkan-Headers/include")
-add_subdirectory("${MVLG_EXTERN}/Vulkan-Hpp")
+if(${MVLG_INCLUDE_VULKAN_HPP})
+    execute_process(
+        WORKING_DIRECTORY "${MVLG_EXTERN}/Vulkan-Hpp"
+        COMMAND "git" "submodule update --init Vulkan-Headers"
+        OUTPUT_VARIABLE vulkanHeaderPullRes 
+    )
+    message(STATUS "${vulkanHeaderPullRes}")
+    include_directories("${MVLG_EXTERN}/Vulkan-Hpp")
+    include_directories("${MVLG_EXTERN}/Vulkan-Hpp/Vulkan-Headers/include")
+    message(STATUS "Vulkan-Hpp automatically included")
+endif()
+#add_subdirectory("${MVLG_EXTERN}/Vulkan-Hpp")
 
 #mvlg header
 include_directories("${PROJECT_SOURCE_DIR}/include")

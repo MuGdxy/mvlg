@@ -5,7 +5,7 @@
 #include <MuCplGen/MuCplGen.h>
 #include <MuCplGen/SubModules/Sequence.h>
 #include <unordered_map>
-namespace vplg
+namespace mvlg
 {
 	class SpecializationConstants
 	{
@@ -343,6 +343,7 @@ namespace vplg
 			virtual void* Value() override { return data.data(); }
 		public:
 			std::array<Ty, N> data;
+			constexpr uint32_t DataSize() { return data.size() * sizeof(Ty); }
 			virtual ~Entry() override {};
 		};
 
@@ -354,6 +355,7 @@ namespace vplg
 		public:
 			std::vector<Ty> data;
 			virtual ~Entry() override {};
+			uint32_t DataSize() { return data.size() * sizeof(Ty); }
 		};
 
 		void Init(std::shared_ptr<spv_reflect::ShaderModule> module)
