@@ -43,9 +43,9 @@ mvlg can do:
   block->SetVariantArraySize(arraySize);//to get block total size for memory copy
   
   //memory copy
-  void* data = device.mapMemory(storageBufferMemory, 0, block->TotalSize());
-  count->WriteMemory(data);
-  block->WriteMemory(data);
+  void* dst = device.mapMemory(storageBufferMemory, 0, block->TotalSize());
+  count->WriteMemory(dst);
+  block->WriteMemory(dst);
   
   //write descriptor set
   vk::DescriptorBufferInfo bufferInfo(storageBuffer, 0, descriptorBlock->TotalSize());
