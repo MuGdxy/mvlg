@@ -36,6 +36,7 @@ namespace mvlg
 	{
 		const vk::Device* device = nullptr;
 		std::vector<vk::SpecializationInfo> specializationInfos;
+		std::vector<SpecializationConstants> specializationConstants;
 	public:
 		LayoutGenerator(const vk::Device& device,
 			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 

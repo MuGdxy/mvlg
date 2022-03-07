@@ -92,11 +92,12 @@ namespace mvlg
 		const std::vector<uint32_t>& specializationConstantsIndex, 
 		const std::vector<SpecializationConstants>& specializationConstants) 
 	{
+		this->specializationConstants = specializationConstants;
 		auto& infos = specializationInfos;
 		if (specializationConstantsIndex.size())
 		{
-			infos.reserve(specializationConstants.size());
-			for (auto& s : specializationConstants) infos.push_back(s.GetSpecializationInfo());
+			infos.reserve(this->specializationConstants.size());
+			for (auto& s : this->specializationConstants) infos.push_back(s.GetSpecializationInfo());
 		}
 		if (this->device) throw std::runtime_error("LayoutGenerator should be setup only once");
 		this->device = &device;
