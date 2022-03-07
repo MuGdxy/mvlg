@@ -35,15 +35,16 @@ namespace vplg
 	class LayoutGenerator
 	{
 		const vk::Device* device = nullptr;
-		vk::SpecializationInfo specializationInfo;
+		std::vector<vk::SpecializationInfo> specializationInfos;
 	public:
 		LayoutGenerator(const vk::Device& device,
 			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
-			const vk::SpecializationInfo* specializationInfo = nullptr);
+			const SpecializationConstants& specializationConstants);
 
 		LayoutGenerator(const vk::Device& device,
 			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
-			const SpecializationConstants& specializationConstants);
+			const std::vector<uint32_t>& specializationConstantsIndex = {},
+			const std::vector<SpecializationConstants>& specializationConstantsList = {});
 
 		LayoutGenerator() { }
 
@@ -54,6 +55,11 @@ namespace vplg
 		void Generate(const vk::Device& device,
 			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
 			const SpecializationConstants& specializationConstants);
+
+		void Generate(const vk::Device& device,
+			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
+			const std::vector<uint32_t>& specializationConstantsIndex = {},
+			const std::vector<SpecializationConstants>& specializationConstants = {});
 
 		std::vector<vk::DescriptorSetLayout> descriptorSetLayouts;
 		std::unordered_map<uint32_t, vk::DescriptorSetLayout> descriptorSetLayoutMap;

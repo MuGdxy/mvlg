@@ -72,43 +72,55 @@ namespace vplg
 		//	AddPushConstantRange(&variable->members[i]);
 	}
 
-	LayoutGenerator::LayoutGenerator(const vk::Device& device,
-		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
-		const SpecializationInfo* specializationInfo)
-	{
-		Generate(device, modules, specializationInfo);
-	}
-
-	LayoutGenerator::LayoutGenerator(const vk::Device& device,
-		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
+	LayoutGenerator::LayoutGenerator(const vk::Device& device, 
+		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
 		const SpecializationConstants& specializationConstants)
 	{
 		Generate(device, modules, specializationConstants);
 	}
 
-	void LayoutGenerator::Generate(const vk::Device& device,
-		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
-		const SpecializationInfo* specializationInfo)
+	LayoutGenerator::LayoutGenerator(const vk::Device& device, 
+		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
+		const std::vector<uint32_t>& specializationConstantsIndex, 
+		const std::vector<SpecializationConstants>& specializationConstantsList)
 	{
+		Generate(device, modules, specializationConstantsIndex, specializationConstantsList);
+	}
+
+	void LayoutGenerator::Generate(const vk::Device& device, 
+		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
+		const std::vector<uint32_t>& specializationConstantsIndex, 
+		const std::vector<SpecializationConstants>& specializationConstants) 
+	{
+		auto& infos = specializationInfos;
+		if (specializationConstantsIndex.size())
+		{
+			infos.reserve(specializationConstants.size());
+			for (auto& s : specializationConstants) infos.push_back(s.GetSpecializationInfo());
+		}
 		if (this->device) throw std::runtime_error("LayoutGenerator should be setup only once");
 		this->device = &device;
 		PushConstantRangeCounter pushConstantCounter;
 		DescriptorSetLayoutCounter descriptorSetLayoutCounter;
 		shaderStageCreateInfos.reserve(modules.size());
 		shaderModules.reserve(modules.size());
-		for (auto module : modules)
+		for (size_t i = 0; i < modules.size(); ++i)
 		{
+			auto& module = modules[i];
+			vk::SpecializationInfo* info = nullptr;
+			if(i < infos.size()) info = &infos[specializationConstantsIndex[i]];
 			ShaderModuleCreateInfo shaderModuleCreateInfo({}, module->GetCodeSize(), module->GetCode());
 			shaderModules.push_back(device.createShaderModule(shaderModuleCreateInfo));
 			auto stage = module->GetShaderStage();
 			shaderStageCreateInfos.emplace_back(
 				PipelineShaderStageCreateFlags(0),
 				(ShaderStageFlagBits)stage, shaderModules.back(),
-				module->GetEntryPointName(), specializationInfo);
-
+				module->GetEntryPointName(), info);
+			info->pMapEntries[1];
 			uint32_t count;
 			MU_CHECK(module->EnumeratePushConstantBlocks(&count, nullptr),
 				"failed to get push constant block count");
+
 			std::vector<SpvReflectBlockVariable*> pushConstants(count);
 			MU_CHECK(module->EnumeratePushConstantBlocks(&count, pushConstants.data()),
 				"failed to get push constant blocks");
@@ -137,8 +149,8 @@ namespace vplg
 		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
 		const SpecializationConstants& specializationConstants)
 	{
-		specializationInfo = specializationConstants.GetSpecializationInfo();
-		Generate(device, modules, &specializationInfo);
+		std::vector<uint32_t> index(modules.size(), 0);
+		Generate(device, modules, index, { specializationConstants });
 	}
 
 	//SemanticConstants::BaseEntry::~BaseEntry(){}
