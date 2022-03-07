@@ -36,12 +36,12 @@ all_type_descriptions:
     member_count: 0
     members:
   - &td2
-    id: 21
-    op: 28
+    id: 19
+    op: 30
     type_name: "StorageBuffer"
     struct_member_name: 
     storage_class: -1 # NOT APPLICABLE
-    type_flags: 0x30080000 # ARRAY STRUCT EXTERNAL_BLOCK 
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
     decoration_flags: 0x00000002 # BUFFER_BLOCK 
     traits:
       numeric:
@@ -49,7 +49,7 @@ all_type_descriptions:
         vector: { component_count: 0 }
         matrix: { column_count: 0, row_count: 0, stride: 0 }
       image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
-      array: { dims_count: 1, dims: [2,], stride: 0 }
+      array: { dims_count: 0, dims: [], stride: 0 }
     member_count: 2
     members:
       - *td0
@@ -72,7 +72,7 @@ all_type_descriptions:
     member_count: 0
     members:
   - &td4
-    id: 29
+    id: 27
     op: 28
     type_name: 
     struct_member_name: "fArray"
@@ -89,7 +89,7 @@ all_type_descriptions:
     member_count: 0
     members:
   - &td5
-    id: 30
+    id: 28
     op: 30
     type_name: "PushConstant"
     struct_member_name: 
@@ -221,7 +221,7 @@ all_block_variables:
     type_description: *td5
 all_descriptor_bindings:
   - &db0
-    spirv_id: 23
+    spirv_id: 21
     name: "block"
     binding: 0
     input_attachment_index: 0
@@ -230,7 +230,7 @@ all_descriptor_bindings:
     resource_type: 8 # UAV
     image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
     block: *bv2 # "block"
-    array: { dims_count: 1, dims: [2,] }
+    array: { dims_count: 0, dims: [] }
     accessed: 1
     uav_counter_id: 4294967295
     uav_counter_binding:

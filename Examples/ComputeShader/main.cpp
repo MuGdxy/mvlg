@@ -4,18 +4,22 @@
 #include "utils.hpp"
 #include <mvlg/mvlg.h>
 #include <memory>
-#include "../MuVk/MuVk.h"
+//#include "../MuVk/MuVk.h"
 class ComputeShaderExample
 {
-	std::array<float, 1024> inputData;
-	std::array<float, 1024> outputData;
-	constexpr VkDeviceSize inputDataSize() { return sizeof(inputData); }
+	//std::array<float, 1024> inputData;
+	//std::array<float, 1024> outputData;
+	//constexpr VkDeviceSize inputDataSize() { return sizeof(inputData); }
 	uint32_t computeShaderProcessUnit;
+	const std::vector<const char*> validationLayers =
+	{
+		"VK_LAYER_KHRONOS_validation",
+	};
 public:
 	ComputeShaderExample()
 	{
-		inputData.fill(1.0f);
-		outputData.fill(0.0f);
+		//inputData.fill(1.0f);
+		//outputData.fill(0.0f);
 	}
 
 	vk::Instance instance;
@@ -30,12 +34,12 @@ public:
 		{
 			"VK_LAYER_KHRONOS_validation"
 		};
-		if (!MuVk::checkValidationLayerSupport())
+		if (!vk::su::checkValidationLayerSupport(validationLayers))
 			throw std::runtime_error("validation layers requested, but not available!");
 
 		//get extension properties
-		auto extensionProperties = MuVk::Query::instanceExtensionProperties();
-		std::cout << extensionProperties << std::endl;
+		//auto extensionProperties = MuVk::Query::instanceExtensionProperties();
+		//std::cout << extensionProperties << std::endl;
 
 		//required extension
 		const std::vector extensions =
@@ -77,7 +81,6 @@ public:
 		else
 		{
 			std::cout << "Select Physical Device:" << physicalDevice << std::endl;
-			std::cout << MuVk::Query::deviceExtensionProperties(physicalDevice) << std::endl;
 			std::cout << "Select Queue Index:" << queueFamilyIndex.value() << std::endl;
 		}
 		auto p = physicalDevice.getProperties();
@@ -107,7 +110,6 @@ public:
 		storageBuffer = device.createBuffer(createInfo);
 
 		vk::MemoryRequirements requirements = device.getBufferMemoryRequirements(storageBuffer);
-		std::cout << static_cast<VkMemoryRequirements&>(requirements) << std::endl;
 
 		vk::MemoryAllocateInfo allocInfo(requirements.size,
 			vk::su::findMemoryType(physicalDevice.getMemoryProperties(), requirements.memoryTypeBits,
@@ -118,10 +120,6 @@ public:
 	}
 
 	vk::DescriptorSetLayout descriptorSetLayout;
-	void createDescriptorSetLayout()
-	{
-		// done by LayoutGenerator
-	}
 
 	std::vector<uint8_t> readFile(const std::string& filename)
 	{
@@ -141,20 +139,21 @@ public:
 
 	vk::PipelineLayout pipelineLayout;
 	vk::Pipeline computePipeline;
-	vplg::LayoutGenerator layoutGenerator;
+	mvlg::LayoutGenerator layoutGenerator;
 	std::shared_ptr<spv_reflect::ShaderModule> module;
-	vplg::SemanticConstants semanticConstants;
-	vplg::SemanticDescriptors semanticDescriptors;
-	vplg::SemanticDescriptors::Entry<uint32_t>* descriptorIndex;
-	vplg::SemanticDescriptors::Entry<std::vector<float>>* descriptorBlockData;
-	vplg::SemanticDescriptors::Entry<vplg::NoStorage>* descriptorBlock;
+	mvlg::SemanticConstants semanticConstants;
+	mvlg::SemanticDescriptors semanticDescriptors;
+	mvlg::SemanticDescriptors::Entry<uint32_t>* descriptorIndex;
+	mvlg::SemanticDescriptors::Entry<std::vector<float>>* descriptorBlockData;
+	mvlg::SemanticDescriptors::Entry<mvlg::NoStorage>* descriptorBlock;
 	void createComputePipeline()
 	{
-		module = std::make_shared<spv_reflect::ShaderModule>(readFile(MU_SHADER_PATH "multiply.spv"));
+		module = std::make_shared<spv_reflect::ShaderModule>(readFile(MU_SHADER_PATH "index.comp.spv"));
 
-		vplg::SpecializationConstants specializationConstants;
+		mvlg::SpecializationConstants specializationConstants;
 		{
 			specializationConstants
+				.AddConstant(0, computeShaderProcessUnit)
 				.AddConstant(1, 1)
 				.AddConstant(2, 2.0f);
 		}
@@ -164,9 +163,9 @@ public:
 		pipelineLayout = layoutGenerator.pipelineLayout;
 		semanticConstants.Init(module, pipelineLayout);
 		semanticDescriptors.Init(module);
-		descriptorIndex = semanticDescriptors.GetEntry<uint32_t>("block[0].index");
-		descriptorBlockData = semanticDescriptors.GetEntry<std::vector<float>>("block[0].data");
-		descriptorBlock = semanticDescriptors.GetEntry<vplg::NoStorage>("block[0]");
+		descriptorIndex = semanticDescriptors.GetEntry<uint32_t>("block.index");
+		descriptorBlockData = semanticDescriptors.GetEntry<std::vector<float>>("block.data");
+		descriptorBlock = semanticDescriptors.GetEntry<mvlg::NoStorage>("block");
 		descriptorIndex->data = 2;
 		descriptorBlockData->data.resize(1024, 0.0f);
 		descriptorBlockData->SetVariantArraySize(descriptorBlockData->data.size());
@@ -193,7 +192,6 @@ public:
 	vk::DescriptorPool descriptorPool;
 	void createDescriptorPool()
 	{
-		layoutGenerator.descriptorTypeStatics;
 		std::vector<vk::DescriptorPoolSize> poolSizes;
 		for (auto& type : layoutGenerator.descriptorTypeStatics)
 			poolSizes.emplace_back(type.first, type.second);
@@ -219,10 +217,7 @@ public:
 
 		auto writes =
 		{
-			descriptorBlock->WriteDescriptorSet(descriptorSet,bufferInfo),
-			vk::WriteDescriptorSet(
-				descriptorSet, descriptorBlock->Binding(), descriptorBlock->ArrayElement() + 1,
-				type, {}, bufferInfo,{})
+			descriptorBlock->WriteDescriptorSet(descriptorSet,bufferInfo)
 		};
 
 		device.updateDescriptorSets(writes, {});
@@ -239,10 +234,10 @@ public:
 	void execute()
 	{
 		std::cout << "input data:\n";
-		for (size_t i = 0; i < inputData.size(); ++i)
+		for (size_t i = 0; i < descriptorBlockData->data.size(); ++i)
 		{
 			if (i % 64 == 0 && i != 0) std::cout << '\n';
-			std::cout << inputData[i];
+			std::cout << descriptorBlockData->data[i];
 		}
 		std::cout << "\n";
 
@@ -267,7 +262,7 @@ public:
 		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout,
 			0, descriptorSet, {});
 		commandBuffer.dispatch(
-			inputData.size() / computeShaderProcessUnit, //x
+			descriptorBlockData->DataSize() / computeShaderProcessUnit, //x
 			1, //y
 			1 //z
 		);
@@ -275,8 +270,7 @@ public:
 		vk::SubmitInfo submitInfo({}, {}, commandBuffer, {});
 		queue.submit(submitInfo);
 		queue.waitIdle();
-		auto data = device.mapMemory(storageBufferMemory, 0, inputDataSize());
-		memcpy(outputData.data(), data, inputDataSize());
+		auto data = device.mapMemory(storageBufferMemory, 0, descriptorBlockData->DataSize());
 		descriptorIndex->ReadMemory(data);
 		descriptorBlockData->ReadMemory(data);
 		device.unmapMemory(storageBufferMemory);
@@ -334,13 +328,13 @@ int main()
 {
 	ComputeShaderExample program;
 	program.Run();
-	try
-	{
-
-	}
-	catch (std::runtime_error e)
-	{
-		std::cerr << e.what() << std::endl;
-		return EXIT_FAILURE;
-	}
+	//try
+	//{
+	//	program.Run();
+	//}
+	//catch (std::runtime_error e)
+	//{
+	//	std::cerr << e.what() << std::endl;
+	//	return EXIT_FAILURE;
+	//}
 }
