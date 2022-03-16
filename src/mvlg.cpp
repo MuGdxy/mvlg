@@ -1,90 +1,17 @@
 #include <mvlg/mvlg.h>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 #define MU_CHECK(x, info) if((x)!=0) throw std::runtime_error((info));
 namespace mvlg
 {
 	using namespace vk;
-	struct PushConstantRangeCounter
-	{
-		std::vector<PushConstantRange> ranges;
-		ShaderStageFlags stageFlags = ShaderStageFlagBits::eAll;
-		void SetStageFlags(SpvReflectShaderStageFlagBits flags)
-		{
-			stageFlags = (ShaderStageFlags)flags;
-		}
-		void AddPushConstantRange(const SpvReflectBlockVariable* variable);
-	};
-
-	struct DescriptorSetLayoutCounter
-	{
-		std::vector<DescriptorSetLayoutCreateInfo> layouts;
-		std::vector<DescriptorSetLayoutBinding> bindings;
-		std::vector<uint32_t> sets;
-		ShaderStageFlags stageFlags = ShaderStageFlagBits::eAll;
-		void SetStageFlags(SpvReflectShaderStageFlagBits flags)
-		{
-			stageFlags = (ShaderStageFlags)flags;
-		}
-		void AddDescriptorSetLayout(const SpvReflectDescriptorSet* set)
-		{
-			auto start = bindings.size();
-			for (size_t i = 0; i < set->binding_count; ++i)
-			{
-				auto binding = set->bindings[i];
-				//TODO: sampler
-				//std::vector<Sampler> immutable samplers
-
-				bindings.emplace_back(binding->binding,
-					(DescriptorType)binding->descriptor_type, binding->count, stageFlags, nullptr);
-			}
-			auto count = set->binding_count;
-			layouts.emplace_back((DescriptorSetLayoutCreateFlags)0, count, &bindings[start]);
-			sets.emplace_back(set->set);
-		}
-
-		void CreateDescriptorSetLayouts(const vk::Device& device,
-			std::vector<DescriptorSetLayout>& descriptorSetLayouts,
-			std::unordered_map<uint32_t, DescriptorSetLayout>& descriptorSetLayoutMap,
-			std::unordered_map<vk::DescriptorType, uint32_t>& descriptorTypeStatics)
-		{
-			descriptorSetLayouts.reserve(layouts.size());
-			for (size_t i = 0; i < layouts.size(); ++i)
-			{
-				auto descriptorLayout = device.createDescriptorSetLayout(layouts[i]);
-				descriptorSetLayouts.emplace_back(descriptorLayout);
-				descriptorSetLayoutMap.emplace(sets[i], descriptorLayout);
-			}
-			for (auto binding : bindings)
-			{
-				auto iter = descriptorTypeStatics.find(binding.descriptorType);
-				if (iter == descriptorTypeStatics.end())
-					descriptorTypeStatics.insert({ binding.descriptorType, binding.descriptorCount });
-				else iter->second += binding.descriptorCount;
-			}
-		}
-	};
 
 	void PushConstantRangeCounter::AddPushConstantRange(const SpvReflectBlockVariable* variable)
 	{
 		ranges.emplace_back(stageFlags, variable->absolute_offset, variable->size);
 		//for (size_t i = 0; i < variable->member_count; ++i)
 		//	AddPushConstantRange(&variable->members[i]);
-	}
-
-	LayoutGenerator::LayoutGenerator(const vk::Device& device, 
-		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
-		const SpecializationConstants& specializationConstants)
-	{
-		Generate(device, modules, specializationConstants);
-	}
-
-	LayoutGenerator::LayoutGenerator(const vk::Device& device, 
-		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
-		const std::vector<uint32_t>& specializationConstantsIndex, 
-		const std::vector<SpecializationConstants>& specializationConstantsList)
-	{
-		Generate(device, modules, specializationConstantsIndex, specializationConstantsList);
 	}
 
 	void LayoutGenerator::Generate(const vk::Device& device, 
@@ -100,9 +27,7 @@ namespace mvlg
 			for (auto& s : this->specializationConstants) infos.push_back(s.GetSpecializationInfo());
 		}
 		if (this->device) throw std::runtime_error("LayoutGenerator should be setup only once");
-		this->device = &device;
-		PushConstantRangeCounter pushConstantCounter;
-		DescriptorSetLayoutCounter descriptorSetLayoutCounter;
+		this->device = device;
 		shaderStageCreateInfos.reserve(modules.size());
 		shaderModules.reserve(modules.size());
 		for (size_t i = 0; i < modules.size(); ++i)
@@ -117,7 +42,7 @@ namespace mvlg
 				PipelineShaderStageCreateFlags(0),
 				(ShaderStageFlagBits)stage, shaderModules.back(),
 				module->GetEntryPointName(), info);
-			info->pMapEntries[1];
+
 			uint32_t count;
 			MU_CHECK(module->EnumeratePushConstantBlocks(&count, nullptr),
 				"failed to get push constant block count");
@@ -137,7 +62,7 @@ namespace mvlg
 
 			descriptorSetLayoutCounter.SetStageFlags(stage);
 			for (const auto set : descriptorSets)
-				descriptorSetLayoutCounter.AddDescriptorSetLayout(set);
+				descriptorSetLayoutCounter.AddDescriptorSetLayout(set, setVariantCount);
 		}
 
 		descriptorSetLayoutCounter.CreateDescriptorSetLayouts(device,
@@ -161,15 +86,15 @@ namespace mvlg
 		cmd.pushConstants(owner->layout, owner->stage, offset, size, Value());
 	}
 
-	void SemanticConstants::GetHeads()
+	void SemanticConstants::GetHeads(const std::shared_ptr<spv_reflect::ShaderModule>& module)
 	{
 		if (heads.empty())
 		{
 			uint32_t count;
-			MU_CHECK(shaderModule->EnumeratePushConstantBlocks(&count, nullptr),
+			MU_CHECK(module->EnumeratePushConstantBlocks(&count, nullptr),
 				"failed to get push constant block count");
 			heads.resize(count);
-			MU_CHECK(shaderModule->EnumeratePushConstantBlocks(&count, heads.data()),
+			MU_CHECK(module->EnumeratePushConstantBlocks(&count, heads.data()),
 				"failed to get push constant blocks");
 		}
 	}
@@ -177,20 +102,28 @@ namespace mvlg
 		std::shared_ptr<spv_reflect::ShaderModule> module,
 		const vk::PipelineLayout& layout)
 	{
-		shaderModule = module;
-		this->layout = layout;
-		stage = (vk::ShaderStageFlags)module->GetShaderStage();
+		Init(std::vector{module}, layout);
 	}
 
-	void SemanticDescriptors::GetSets()
+	void SemanticConstants::Init(
+		const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
+		const vk::PipelineLayout& layout)
+	{
+		shaderModules = modules;
+		this->layout = layout;
+		for (auto& module : shaderModules)
+			stage |= (vk::ShaderStageFlags)module->GetShaderStage();
+	}
+
+	void SemanticDescriptors::GetSets(const std::shared_ptr<spv_reflect::ShaderModule>& module)
 	{
 		if (sets.empty())
 		{
 			uint32_t count;
-			MU_CHECK(shaderModule->EnumerateDescriptorSets(&count, nullptr),
+			MU_CHECK(module->EnumerateDescriptorSets(&count, nullptr),
 				"failed to get descriptor set count");
 			sets.resize(count);
-			MU_CHECK(shaderModule->EnumerateDescriptorSets(&count, sets.data()),
+			MU_CHECK(module->EnumerateDescriptorSets(&count, sets.data()),
 				"failed to get descriptor sets");
 		}
 	}
@@ -634,5 +567,85 @@ namespace mvlg
 	}
 
 	EntryGen entryGen;
+	void DescriptorSetLayoutCounter::AddDescriptorSetLayout(
+		const SpvReflectDescriptorSet* set,
+		std::function<uint32_t(const SpvReflectDescriptorBinding&)> setVariantCount)
+	{
+		auto addNewBinding = [&](const SpvReflectDescriptorBinding* binding, 
+			std::vector<DescriptorSetLayoutBinding>& bindings)
+		{
+			DescriptorSetLayoutBinding info(binding->binding,
+				(DescriptorType)binding->descriptor_type, binding->count, stageFlags, nullptr);
+			if (info.descriptorCount == 0)
+			{
+				if (setVariantCount) info.descriptorCount = setVariantCount(*binding);
+				else throw std::logic_error("descriptor<" + std::string(binding->name) + ">'s count is variant, should be manully set!");
+			}
+			bindings.push_back(info);
+		};
+
+		auto iter = setBindingsMap.find(set->set);
+		if (iter == setBindingsMap.end()) //new set
+		{
+			std::vector<DescriptorSetLayoutBinding> bindings;
+			for (size_t i = 0; i < set->binding_count; ++i)
+			{
+				auto binding = set->bindings[i];
+				//TODO: sampler
+				//std::vector<Sampler> immutable samplers
+				addNewBinding(binding, bindings);
+			}
+			setBindingsMap.emplace(set->set, std::move(bindings));
+		}
+		else // exist set
+		{
+			auto& [id, bindings] = *iter;
+			for (size_t i = 0; i < set->binding_count; ++i)
+			{
+				auto binding = set->bindings[i];
+				auto find = false;
+				for (auto& existBinding : bindings)
+				{
+					if (existBinding.binding == binding->binding)
+					{
+						
+						if (binding->count && existBinding.descriptorCount != binding->count)
+							throw std::runtime_error("inconsistent binding count at <" + std::string(binding->name) + ">");
+						existBinding.stageFlags |= stageFlags;
+						find = true;
+						break;
+					}
+				}
+				if (!find) // add a new binding
+				{
+					addNewBinding(binding, bindings);
+				}
+			}
+		}
+	}
+
+	void DescriptorSetLayoutCounter::CreateDescriptorSetLayouts(
+		const vk::Device& device, std::vector<DescriptorSetLayout>& descriptorSetLayouts, 
+		std::unordered_map<uint32_t, DescriptorSetLayout>& descriptorSetLayoutMap, 
+		std::unordered_map<vk::DescriptorType, uint32_t>& descriptorTypeStatics)
+	{
+		layoutCreateInfos.reserve(setBindingsMap.size());
+		descriptorSetLayouts.reserve(setBindingsMap.size());
+		for (auto& [id, bindings] : setBindingsMap)
+		{
+			auto createInfo = vk::DescriptorSetLayoutCreateInfo({}, bindings);
+			layoutCreateInfos.push_back(createInfo);
+			auto descriptorLayout = device.createDescriptorSetLayout(createInfo);
+			descriptorSetLayouts.emplace_back(descriptorLayout);
+			descriptorSetLayoutMap.emplace(id, descriptorLayout);
+			for (auto& binding : bindings)
+			{
+				auto iter = descriptorTypeStatics.find(binding.descriptorType);
+				if (iter == descriptorTypeStatics.end())
+					descriptorTypeStatics.insert({ binding.descriptorType, binding.descriptorCount });
+				else iter->second += binding.descriptorCount;
+			}
+		}
+	}
 }
 

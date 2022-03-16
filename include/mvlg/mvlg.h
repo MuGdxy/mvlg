@@ -1,10 +1,13 @@
 #include <spirv_reflect.h>
-#include <vulkan/vulkan.hpp>
 #include <list>
+#include <unordered_map>
+#include <vector>
+#include <functional>
+#include <vulkan/vulkan.hpp>
 #include <memory>
 #include <MuCplGen/MuCplGen.h>
 #include <MuCplGen/SubModules/Sequence.h>
-#include <unordered_map>
+
 namespace mvlg
 {
 	class SpecializationConstants
@@ -32,26 +35,53 @@ namespace mvlg
 		}
 	};
 
+	struct PushConstantRangeCounter
+	{
+		std::vector<vk::PushConstantRange> ranges;
+		vk::ShaderStageFlags stageFlags = vk::ShaderStageFlagBits::eAll;
+		void SetStageFlags(SpvReflectShaderStageFlagBits flags)
+		{
+			stageFlags = (vk::ShaderStageFlags)flags;
+		}
+		void AddPushConstantRange(const SpvReflectBlockVariable* variable);
+	};
+
+	struct DescriptorSetLayoutCounter
+	{
+		std::unordered_map<uint32_t, std::vector<vk::DescriptorSetLayoutBinding>> setBindingsMap;
+		std::vector<vk::DescriptorSetLayoutCreateInfo> layoutCreateInfos;
+		std::vector<uint32_t> sets;
+		vk::ShaderStageFlags stageFlags = vk::ShaderStageFlagBits::eAll;
+
+		void SetStageFlags(SpvReflectShaderStageFlagBits flags)
+		{
+			stageFlags = (vk::ShaderStageFlags)flags;
+		}
+
+		void AddDescriptorSetLayout(const SpvReflectDescriptorSet* set, 
+			std::function<uint32_t(const SpvReflectDescriptorBinding&)> setVariantCount);
+
+		void CreateDescriptorSetLayouts(const vk::Device& device,
+			std::vector<vk::DescriptorSetLayout>& descriptorSetLayouts,
+			std::unordered_map<uint32_t, vk::DescriptorSetLayout>& descriptorSetLayoutMap,
+			std::unordered_map<vk::DescriptorType, uint32_t>& descriptorTypeStatics);
+	};
+
 	class LayoutGenerator
 	{
-		const vk::Device* device = nullptr;
+		vk::Device device;
 		std::vector<vk::SpecializationInfo> specializationInfos;
 		std::vector<SpecializationConstants> specializationConstants;
+		PushConstantRangeCounter pushConstantCounter;
+		DescriptorSetLayoutCounter descriptorSetLayoutCounter;
+		std::function<uint32_t(const SpvReflectDescriptorBinding&)> setVariantCount;
 	public:
-		LayoutGenerator(const vk::Device& device,
-			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules, 
-			const SpecializationConstants& specializationConstants);
-
-		LayoutGenerator(const vk::Device& device,
-			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
-			const std::vector<uint32_t>& specializationConstantsIndex = {},
-			const std::vector<SpecializationConstants>& specializationConstantsList = {});
-
 		LayoutGenerator() { }
-
-		void Generate(const vk::Device& device,
-			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
-			const vk::SpecializationInfo* specializationInfo = nullptr);
+		
+		void SetVariantDescriptorCount(std::function<uint32_t(const SpvReflectDescriptorBinding&)> setVariantCount)
+		{
+			this->setVariantCount = setVariantCount;
+		}
 
 		void Generate(const vk::Device& device,
 			const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules,
@@ -69,16 +99,16 @@ namespace mvlg
 		vk::PipelineLayout pipelineLayout;
 		std::vector<vk::ShaderModule> shaderModules;
 		~LayoutGenerator();
-		void DestroyPipelineLayout() { device->destroyPipelineLayout(pipelineLayout); }
+		void DestroyPipelineLayout() { device.destroyPipelineLayout(pipelineLayout); }
 		void DestroyDescriptorSetLayouts()
 		{
 			for(auto layout : descriptorSetLayouts)
-				device->destroyDescriptorSetLayout(layout);
+				device.destroyDescriptorSetLayout(layout);
 		}
 		void DestroyShaderModules()
 		{
 			for (auto module : shaderModules)
-				device->destroyShaderModule(module);
+				device.destroyShaderModule(module);
 		}
 	};
 
@@ -218,10 +248,10 @@ namespace mvlg
 			virtual ~BaseEntry() {};
 			void PushConstant(vk::CommandBuffer& cmd);
 		};
-		std::shared_ptr<spv_reflect::ShaderModule> shaderModule;
+		std::vector<std::shared_ptr<spv_reflect::ShaderModule>> shaderModules;
 		std::list<std::unique_ptr<BaseEntry>> entries;
 		std::vector<SpvReflectBlockVariable*> heads;
-		void GetHeads();
+		void GetHeads(const std::shared_ptr<spv_reflect::ShaderModule>& module);
 
 	public:
 		template<typename Ty>
@@ -247,6 +277,11 @@ namespace mvlg
 		void Init(
 			std::shared_ptr<spv_reflect::ShaderModule> module,
 			const vk::PipelineLayout& layout);
+
+		void Init(
+			const std::vector< std::shared_ptr<spv_reflect::ShaderModule>>& modules,
+			const vk::PipelineLayout& layout);
+
 		template<typename Ty>
 		Entry<Ty>* GetEntry(const std::string& semantic);
 	};
@@ -319,10 +354,10 @@ namespace mvlg
 #undef WriteDptorSet
 		};
 
-		std::shared_ptr<spv_reflect::ShaderModule> shaderModule;
+		std::vector<std::shared_ptr<spv_reflect::ShaderModule>> shaderModules;
 		std::list<std::unique_ptr<BaseEntry>> entries;
 		std::vector<SpvReflectDescriptorSet*> sets;
-		void GetSets();
+		void GetSets(const std::shared_ptr<spv_reflect::ShaderModule>& module);
 	public:
 		template<typename Ty>
 		class Entry : public BaseEntry
@@ -367,7 +402,12 @@ namespace mvlg
 
 		void Init(std::shared_ptr<spv_reflect::ShaderModule> module)
 		{
-			shaderModule = module;
+			shaderModules.push_back(module);
+		}
+
+		void Init(const std::vector<std::shared_ptr<spv_reflect::ShaderModule>>& modules)
+		{
+			shaderModules = modules;
 		}
 		template<typename Ty>
 		Entry<Ty>* GetEntry(const std::string& semantic);
@@ -376,19 +416,22 @@ namespace mvlg
 	template<typename Ty>
 	SemanticDescriptors::Entry<Ty>* SemanticDescriptors::GetEntry(const std::string& semantic)
 	{
-		GetSets();
 		auto entry = std::make_unique<Entry<Ty>>();
-		if (entryGen.GetEntryDescriptorInfo(sets, semantic, entry->descriptorInfo))
+		for (auto& module : shaderModules)
 		{
-			auto ptr = entry.get();
-			entry->semantic = semantic;
-			entries.push_back(std::move(entry));
-			if (ptr->descriptorInfo.isArray && !std::is_same_v<Ty, NoStorage>)
+			GetSets(module);
+			if (entryGen.GetEntryDescriptorInfo(sets, semantic, entry->descriptorInfo))
 			{
-				throw std::runtime_error("this entry points to a descriptor array, "
-					"shouldn't have a certain storage. please use Entry<NoStorage>");
+				auto ptr = entry.get();
+				entry->semantic = semantic;
+				entries.push_back(std::move(entry));
+				if (ptr->descriptorInfo.isArray && !std::is_same_v<Ty, NoStorage>)
+				{
+					throw std::runtime_error("this entry points to a descriptor array, "
+						"shouldn't have a certain storage. please use Entry<NoStorage>");
+				}
+				return ptr;
 			}
-			return ptr;
 		}
 		return nullptr;
 	}
@@ -396,15 +439,18 @@ namespace mvlg
 	template<typename Ty>
 	SemanticConstants::Entry<Ty>* SemanticConstants::GetEntry(const std::string& semantic)
 	{
-		GetHeads();
 		auto entry = std::make_unique<Entry<Ty>>();
-		if (entryGen.GetEntryOffsetSize(heads, semantic, entry->offset, entry->size))
+		for (auto& module : shaderModules)
 		{
-			entry->owner = this;
-			entry->semantic = semantic;
-			auto ptr = entry.get();
-			entries.push_back(std::move(entry));
-			return ptr;
+			GetHeads(module);
+			if (entryGen.GetEntryOffsetSize(heads, semantic, entry->offset, entry->size))
+			{
+				entry->owner = this;
+				entry->semantic = semantic;
+				auto ptr = entry.get();
+				entries.push_back(std::move(entry));
+				return ptr;
+			}
 		}
 		return nullptr;
 	}
